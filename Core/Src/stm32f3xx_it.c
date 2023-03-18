@@ -41,11 +41,10 @@
 
 /* Private variables ---------------------------------------------------------*/
 /* USER CODE BEGIN PV */
-int counter=0;
-int butst=0;
-int newst=1;
-int oldst=0;
+
 volatile uint8_t state = 0;
+volatile uint8_t power = 1;
+
 
 //uint32_t tickspr = 0;
 
@@ -62,6 +61,10 @@ volatile uint8_t state = 0;
 /* USER CODE END 0 */
 
 /* External variables --------------------------------------------------------*/
+extern ADC_HandleTypeDef hadc1;
+extern DAC_HandleTypeDef hdac1;
+extern TIM_HandleTypeDef htim2;
+extern DMA_HandleTypeDef hdma_usart2_rx;
 extern UART_HandleTypeDef huart2;
 /* USER CODE BEGIN EV */
 
@@ -206,17 +209,63 @@ void SysTick_Handler(void)
 /******************************************************************************/
 
 /**
+  * @brief This function handles DMA1 channel6 global interrupt.
+  */
+void DMA1_Channel6_IRQHandler(void)
+{
+  /* USER CODE BEGIN DMA1_Channel6_IRQn 0 */
+
+  /* USER CODE END DMA1_Channel6_IRQn 0 */
+  HAL_DMA_IRQHandler(&hdma_usart2_rx);
+  /* USER CODE BEGIN DMA1_Channel6_IRQn 1 */
+
+  /* USER CODE END DMA1_Channel6_IRQn 1 */
+}
+
+/**
+  * @brief This function handles ADC1 and ADC2 interrupts.
+  */
+void ADC1_2_IRQHandler(void)
+{
+  /* USER CODE BEGIN ADC1_2_IRQn 0 */
+
+  /* USER CODE END ADC1_2_IRQn 0 */
+  HAL_ADC_IRQHandler(&hadc1);
+  /* USER CODE BEGIN ADC1_2_IRQn 1 */
+
+  /* USER CODE END ADC1_2_IRQn 1 */
+}
+
+/**
   * @brief This function handles EXTI line[9:5] interrupts.
   */
 void EXTI9_5_IRQHandler(void)
 {
   /* USER CODE BEGIN EXTI9_5_IRQn 0 */
 state =1;
+
   /* USER CODE END EXTI9_5_IRQn 0 */
+  HAL_GPIO_EXTI_IRQHandler(GPIO_PIN_6);
+  HAL_GPIO_EXTI_IRQHandler(GPIO_PIN_7);
+  HAL_GPIO_EXTI_IRQHandler(GPIO_PIN_8);
   HAL_GPIO_EXTI_IRQHandler(GPIO_PIN_9);
   /* USER CODE BEGIN EXTI9_5_IRQn 1 */
 
   /* USER CODE END EXTI9_5_IRQn 1 */
+}
+
+/**
+  * @brief This function handles TIM2 global interrupt.
+  */
+void TIM2_IRQHandler(void)
+{
+  /* USER CODE BEGIN TIM2_IRQn 0 */
+
+  /* USER CODE END TIM2_IRQn 0 */
+  HAL_TIM_IRQHandler(&htim2);
+  /* USER CODE BEGIN TIM2_IRQn 1 */
+
+  /* USER CODE END TIM2_IRQn 1 */
 }
 
 /**
@@ -245,6 +294,20 @@ void EXTI15_10_IRQHandler(void)
   /* USER CODE BEGIN EXTI15_10_IRQn 1 */
 
   /* USER CODE END EXTI15_10_IRQn 1 */
+}
+
+/**
+  * @brief This function handles TIM6 global interrupt and DAC1 underrun interrupt.
+  */
+void TIM6_DAC_IRQHandler(void)
+{
+  /* USER CODE BEGIN TIM6_DAC_IRQn 0 */
+
+  /* USER CODE END TIM6_DAC_IRQn 0 */
+  HAL_DAC_IRQHandler(&hdac1);
+  /* USER CODE BEGIN TIM6_DAC_IRQn 1 */
+
+  /* USER CODE END TIM6_DAC_IRQn 1 */
 }
 
 /* USER CODE BEGIN 1 */

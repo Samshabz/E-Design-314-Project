@@ -23,6 +23,8 @@
 /* USER CODE BEGIN Includes */
 #include "string.h"
 #include "stdio.h"
+#include <math.h>
+#include <stdlib.h>
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -100,6 +102,7 @@ uint16_t pwmval = 0;
 uint8_t statepara[4];
 uint8_t par1[4];
 uint8_t par2[4];
+uint8_t statepara_str[5];
 
 uint16_t stateval = 0 ;
 uint16_t p1val =0;
@@ -127,6 +130,16 @@ static void MX_USART2_UART_Init(void);
 static void MX_ADC1_Init(void);
 static void MX_DAC1_Init(void);
 static void MX_TIM2_Init(void);
+
+void resetall();
+void modeset();
+void pwmset();
+void dacset();
+void emergencyset();
+void uartencode();
+void uartdecode();
+void buttonpressed();
+
 /* USER CODE BEGIN PFP */
 //void HAL_UART_RxCpltCallback(UART_HandleTypeDef*huart){
 //////
@@ -159,7 +172,7 @@ static void MX_TIM2_Init(void);
 			} else if (Size==19) {
 
 				memcpy(rxSetBuf,rxdata,Size);
-		);
+
 
 				uartmode=1;
 				sliderold = vinadj;
@@ -329,8 +342,7 @@ if ((prevA7 == 1) && (HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_7) == 0)){
     	 	    			emmode=0;
     	 	    		}
     	 tickspr = HAL_GetTick();
-    	 snprintf(countarr, 5, "%03d\n", cntA7);
-    	HAL_UART_Transmit(&huart2, countarr, 4, 1000);
+
     	  }
 
 if ((prevA7 == 0) && (HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_7) == 1)){
@@ -387,7 +399,9 @@ void resetall(){
 
 
 	//pwm
-	 uint16_t pwmval = 0;
+	 uint16_t pwmval= 0;
+	 pwmval=pwmval;
+
 
 
 
@@ -527,18 +541,19 @@ void uartdecode(){
 
 	memcpy(statepara, &rxSetBuf[13], 3);
 	statepara[3] = '\0';
-	stateval = ((double)atoi(statepara));
+	snprintf((char*)statepara_str, 5, "%s", (char*)statepara);
+	stateval = ((uint16_t)atoi((char*)statepara_str));
 
 
 		memcpy(par1, &rxSetBuf[5], 3);
 		par1[3] = '\0';
-		p1val = ((double)atoi(par1));
+		p1val = ((double)atoi((char*)par1));
 
 
 
 		memcpy(par2, &rxSetBuf[9], 3);
 			par2[3] = '\0';
-			p2val = ((double)atoi(par2));
+			p2val = ((double)atoi((char*)par2));
 
 
 
@@ -551,7 +566,7 @@ void uartdecode(){
 	if(rxSetBuf[3] == 'F' ){
 	MODE =0;
 
-	output_voltage =(uint32_t) (4095*(((double)atoi(par1))/512.0));
+	output_voltage =(uint32_t) (4095*(((double)atoi((char*)par1))/512.0));
 
 	dacset();
 	pwmset();
@@ -597,14 +612,25 @@ void uartencode(){
 
 	 // Initialize to all zeros
 
-	uint8_t tBuf[21] = "inarrognized Command\n";
-					HAL_UART_Transmit(&huart2, tBuf, 21, 5);
+	if (uartmode==1){
+		stateval = (uint32_t)((double)(output_voltage)*512.0/4095);
+		p1val=0;
+		p2val =0;
+
+
+
+	}
+
+	//uint8_t tBuf[21] = "inarrognized Command\n";
+	//HAL_UART_Transmit(&huart2, tBuf, 21, 5);
 	// Use sprintf() to format the integer as a string and store it in the totransmit array
-	sprintf(&statusarr[5], "%03d", p1val);
-	sprintf(&statusarr[9], "%03d", p2val);
-	sprintf(&statusarr[13], "%03d", stateval);
+
+	sprintf((char*)(intptr_t)&statusarr[5], "%03d", p1val);
+	sprintf((char*)(intptr_t)&statusarr[9], "%03d", p2val);
+	//	sprintf(&statusarr[9], "%03d", p2val);
+	sprintf((char*)(intptr_t)&statusarr[13], "%03d", stateval);
 	statusarr[0] = '#';
-	sprintf(&statusarr[1], "%03d", ':');
+	sprintf((char*)(intptr_t)&statusarr[1], "%03d", ':');
 	statusarr[2] = 'M';
 	statusarr[1] = ':';
 	statusarr[4] = ':';
@@ -706,6 +732,7 @@ int main(void)
 
 		  if (uartmode==1){
 			  uartdecode();
+			  uartencode();
 			  uartmode=0;
 		  }
 
@@ -749,6 +776,7 @@ int main(void)
 
 	  if (state==1){
 	 		  buttonpressed();
+	 		  uartencode();
 	 		  state=0;
 	 	  }
 

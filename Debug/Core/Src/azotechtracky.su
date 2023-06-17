@@ -1,0 +1,4 @@
+../Core/Src/azotechtracky.c:50:6:set_trackpad_settings	56	static
+../Core/Src/azotechtracky.c:335:6:make_reset_certain	32	static
+../Core/Src/azotechtracky.c:399:6:TP_ReATI	32	static
+../Core/Src/azotechtracky.c:429:6:updateTrackpad	80	static

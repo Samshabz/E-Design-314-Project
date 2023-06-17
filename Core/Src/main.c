@@ -25,6 +25,15 @@
 #include "stdio.h"
 #include <math.h>
 #include <stdlib.h>
+#include "stdbool.h"
+#include "iqs7211a_addresses.h"
+#include "IQS7211A_init_AZP1189A3_v0.1.h"
+#include "IQS7211A.h"
+#include "hellothere.h"
+
+
+
+//#include "stm32f4xx_hal_dma.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -43,15 +52,125 @@
 
 /* Private variables ---------------------------------------------------------*/
 ADC_HandleTypeDef hadc1;
+DMA_HandleTypeDef hdma_adc1;
 
 DAC_HandleTypeDef hdac1;
 
+I2C_HandleTypeDef hi2c1;
+DMA_HandleTypeDef hdma_i2c1_rx;
+
 TIM_HandleTypeDef htim2;
+TIM_HandleTypeDef htim3;
+TIM_HandleTypeDef htim4;
 
 UART_HandleTypeDef huart2;
 DMA_HandleTypeDef hdma_usart2_rx;
 
 /* USER CODE BEGIN PV */
+
+//debug
+
+
+extern uint8_t pressAndHoldFlag;
+extern uint8_t SlideFlag;
+extern uint8_t TapFlag;
+extern uint32_t distance;
+extern int diffX;
+volatile int volconflag = 0;
+
+int rchan=0;
+int gchan=0;
+int bchan=0;
+uint8_t prevMODE =0;
+uint8_t modechangedflag = 0;
+extern double InitialdiffX;
+extern double InitialdiffY;
+extern double initialstate_intensity;
+int rrr;
+uint8_t stateok=0;
+int max_r;
+
+volatile double state_intensity=0;
+double slidetime=0;
+double calltime=0;
+double sliderold1[6]={0};
+
+//dma
+int statett =0;
+extern uint16_t prodNum;
+uint8_t strobeon=0;
+uint8_t ps=0; //power state replaces power
+uint8_t dmaflag = 0 ;
+int rcnt = 0;
+extern uint8_t azoFlag;
+
+uint8_t firston = 0;
+int testflag=0;
+//morsesend
+int timuni = 512;
+extern int32_t slideroldtrack ;
+int reqwait = 0;
+int reqwait2 = 0;
+int voltlev =0;
+int varno=0;
+int len1=0;
+int len2=0;
+int len3=0;
+extern uint8_t testmode;
+uint8_t probincr=0;
+
+int cyclesno;
+char finale[4]="DEB";
+uint32_t pwmvoltlev=0;
+
+int sumdiff=0;
+volatile int out_new=0;
+
+int x1=0;
+int x2=0;
+int x3=0;
+int x4=0;
+int morsesent=0;
+int ii=0;
+int jj=0;
+
+
+uint8_t databuf[5];
+
+
+//morse
+uint8_t flagstatcopy = 0;
+int test1=0;
+int test2=0;
+int* output1 = NULL;
+float cantruntime =0;
+int* output2= NULL;
+int* output3= NULL;
+char defmes[4] = "SOS" ;
+char message[4] = "SOS" ;
+char c;
+const char* morse = NULL;
+int* output;
+
+char* morseTable[] = {
+    ".-", "-...", "-.-.", "-..", ".", "..-.", "--.", "....", "..",
+    ".---", "-.-", ".-..", "--", "-.", "---", ".--.", "--.-", ".-.",
+    "...", "-", "..-", "...-", ".--", "-..-", "-.--", "--..",
+    "-----", ".----", "..---", "...--", "....-", ".....",
+    "-....", "--...", "---..", "----."
+};
+
+
+//strobe
+
+uint8_t alternator=0;
+int dutycyc = 500;
+uint32_t strobetime=0;
+uint8_t strobeflag = 0;
+
+int k=0;
+
+
 
 //UART
 char txData[13] = "#:25002783:$\n";
@@ -59,33 +178,51 @@ uint8_t rxdata[50];
 char countarr[5];
 
 int tickspr = 0;
+int tickspr1 = 0;
+
+//debug
+uint8_t testopen;
+uint8_t byvar;
+uint8_t cntlp=0;
+int hardfault1=0;
+int stinlast =0;
 
 //button vars
 extern uint8_t state;
-extern uint8_t power;
+ uint8_t stateincr=0;
+ int oldst= 0 ;
+
 uint16_t cntA9=0;  //A9 is middle
 uint16_t cntB8=0; //left B8
 uint16_t cntA6=0;  //A6 is top
 uint16_t cntA7=0;   //A7 right
-uint16_t cntB9=0;  //B9 is bottom
+uint16_t cntA1=0;  //B9 is bottom
 
 uint8_t prevA9=1;
-uint8_t prevB9=1;
+uint8_t prevA1=1;
 uint8_t prevB8=1;
 uint8_t prevA6=1;
 uint8_t prevA7=1;
 
+ uint8_t letbut=0;
+ uint8_t ritbut=0;
+ uint8_t botbut=0;
+ uint8_t topbut=0;
+ uint8_t midbut=0;
+
 
 
 //adc slider
-uint32_t val=0; // value of R (digital val 0 to around 4k)
+ uint32_t val=0; // value of R (digital val 0 to around 4k)
+
+
 float vin=0;
 double vinadj=0;
 
 
 //dac
 double dacout=0;
-uint32_t output_voltage = 0;
+volatile uint32_t output_voltage = 0;
 
 
 //mode
@@ -95,10 +232,19 @@ uint8_t emmode=0;
 
 //pwm
 uint16_t pwmval = 0;
+int azoincroo=0;
+
+double vinadjsum[3]= {0};
+	  uint8_t io=0;
+
+double vinadjav =0;
+
+
+
 
 
 //uart decoding
-
+uint8_t butencode=0;
 uint8_t statepara[4];
 uint8_t par1[4];
 uint8_t par2[4];
@@ -106,8 +252,11 @@ uint8_t statepara_str[5];
 
 uint16_t stateval = 0 ;
 uint16_t p1val =0;
-uint16_t p2val =0;
-uint16_t flagstat=0;
+uint16_t p2bchan=0;
+uint16_t p1timeval =0;
+
+char p2val[4] = "000";
+ uint16_t flagstat=0;
 uint8_t uartmode=0;
 uint8_t statusarr[19];
 
@@ -116,9 +265,12 @@ uint8_t rxReqBuf[7];
 uint8_t rxSetBuf[19];
 uint8_t globalsize;
 
+extern uint16_t xCoord;
+extern uint16_t yCoord;
+
 //uart inerrupt conflict
 
-uint8_t sliderold;
+double sliderold=0;
 
 /* USER CODE END PV */
 
@@ -130,8 +282,12 @@ static void MX_USART2_UART_Init(void);
 static void MX_ADC1_Init(void);
 static void MX_DAC1_Init(void);
 static void MX_TIM2_Init(void);
+static void MX_I2C1_Init(void);
+static void MX_TIM3_Init(void);
+static void MX_TIM4_Init(void);
+/* USER CODE BEGIN PFP */
 
-void resetall();
+
 void modeset();
 void pwmset();
 void dacset();
@@ -139,278 +295,147 @@ void emergencyset();
 void uartencode();
 void uartdecode();
 void buttonpressed();
+void strobeset();
+void sendoutmorse();
+void MODESWITCH();
+void buttonselect();
+void uartselect();
+void poweroff();
+void convertToMorse();
 
-/* USER CODE BEGIN PFP */
-//void HAL_UART_RxCpltCallback(UART_HandleTypeDef*huart){
-//////
-//////
-////
-////	//HAL_UART_Receive_IT(&huart2, rxdata, sizeof(rxdata));}
-////
-////
-//////}
-//void HAL_UART_TxCpltCallback(UART_HandleTypeDef*huart){
-//
-//
-//}
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
+void HAL_UART_TxCpltCallback(UART_HandleTypeDef *huart) {
+	   __HAL_UART_DISABLE_IT(&huart2, UART_IT_TXE);
+	   //HAL_UART_Receive_IT(&huart2, (uint8_t *) rx_data, 1);
+
+}
+
+void HAL_UARTEx_RxEventCallback(UART_HandleTypeDef *huart, uint16_t Size){
+
+	dmaflag=0;
+	//firston=1;
+	rcnt=0;
+	//calltime = HAL_GetTick();
+	 sliderold=vinadj;
+	  if (huart->Instance == USART2) {
+	        while (dmaflag != 1 && rcnt < Size+2) { // Loop while there are unread bytes in the buffer
+	            if (rxdata[rcnt] == '$' && rcnt <= 5) {
+
+	            	//req
+	                memcpy(rxReqBuf, rxdata, 7);
+	                uartmode = 2;
+	                dmaflag = 1;
+
+	            } else if (rxdata[rcnt] == '$' && rcnt> 5) {
+
+	            	//set
+	            	if (ps==0){
+	            	ps=1;
+	            	firston=1;
+
+	            	}
 
 
+	                memcpy(rxSetBuf, rxdata, 19);
+	                uartmode = 1;
 
-	void HAL_UARTEx_RxEventCallback(UART_HandleTypeDef *huart, uint16_t Size){
+	                dmaflag = 1;
 
-		if (huart->Instance == USART2){
-
-
-			if (Size==7){
-				memcpy(rxReqBuf,rxdata,Size);
-				uartmode=2;
-
-			} else if (Size==19) {
-
-				memcpy(rxSetBuf,rxdata,Size);
-
-
-				uartmode=1;
-				sliderold = vinadj;
-			} else {
-				globalsize = Size;
-				uint8_t tBuf[21] = "Unrecognized Command\n";
-				HAL_UART_Transmit(&huart2, tBuf, 21, 5);
-				uartmode=0;
-			}
-
-
-		__HAL_DMA_DISABLE_IT(&hdma_usart2_rx,DMA_IT_HT);
-		HAL_UARTEx_ReceiveToIdle_DMA(&huart2, rxdata, 50);
-
-		}
+	            } else {
+	                rcnt++;
+	            }
+	        }
+	        //sliderold = vinadj;
+	        __HAL_DMA_DISABLE_IT(&hdma_usart2_rx, DMA_IT_HT);
+	        HAL_UARTEx_ReceiveToIdle_DMA(&huart2, rxdata, 50);
+	        volconflag =0;
+	    }
 	}
 
 
 
 
 
+void buttonpressed()  {
 
+probincr++;
+//button A9 middle
+	 if (midbut ==0){
+        if (ps==1){
+        ps=0;
+                  }
 
-/////BUTTTONSSSSSS
-void buttonpressed(){
+        else      {
+        ps =1;
+        butencode=1;
+                  }
+        stateok=0;
 
-              if ((HAL_GetTick() - tickspr) >= 20){
-
-
-
-
-          //button A9 middle
-            	  	  if(prevA9==1 || HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_9) == 1 ){
-                           if ((prevA9 == 1) && (HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_9) == 0)){
-
-                        	  if (power==1){
-                        		  power=0;
-                        		  resetall();
-
-
-                        	  }
-                        	  else {
+	 	 	 	 	  }
 
 
 
-                        		  power =1;
-                        	  }
-
-                               tickspr = HAL_GetTick();
-                           }
-
-                           if ((prevA9 == 0) && (HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_9) == 1)){
-                        	   tickspr = HAL_GetTick();
-                           }
-
-              prevA9 = HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_9);
+//button A6 top
+     if (topbut==0)   {
+      butencode=1;
+      stateok=1;
+            		  }
+//end A6 top
 
 
-            	  	  }
+//button B9 bottom
 
-            	  	 //end A9 middle
-
-
-
-
-
-
-
-            	  	//button A6 top
-if((prevA6==1 || HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_6) == 1) && power !=0){
-     if ((prevA6 == 1) && (HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_6) == 0)){
-      cntA6++;
-
-
-        if (cntA6==1000){
-        cntA6=0;
-
-        				}
-
-
-        tickspr = HAL_GetTick();
-            			}
-
-        if ((prevA6 == 0) && (HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_6) == 1) ){
-        	tickspr = HAL_GetTick();
-        																}
-
-prevA6 = HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_6);
-
-
-}
-            //end A6 top
-
-
-
-
-	//button B9 bottom
-if((prevB9==1 || HAL_GPIO_ReadPin(GPIOB, GPIO_PIN_9) == 1) && power !=0){
- if ((prevB9 == 1) && (HAL_GPIO_ReadPin(GPIOB, GPIO_PIN_9) == 0)){
-  cntB9++;
-
-
-    if (cntB9==1000){
-    cntB9=0;
-
-    				}
-
-
-    tickspr = HAL_GetTick();
-        			}
-
-    if ((prevB9 == 0) && (HAL_GPIO_ReadPin(GPIOB, GPIO_PIN_9) == 1)){
-    	tickspr = HAL_GetTick();
-    																}
-
-prevB9 = HAL_GPIO_ReadPin(GPIOB, GPIO_PIN_9);
-
-
-}
-        //end B9 bottom
-
-
-
-
-
-
-
+     if (botbut == 0) {
+	 butencode=1;
+	 stateok=1;
+        			  }
+ //end B9 bottom
 
 
 //button B8 left
+     if (letbut == 0) {
+    	   butencode=1;
+    	   ps=0;
+    	   p1timeval=0;
+    	   cntB8++;
+    	   emmode=0;
 
-   if((prevB8==1 || HAL_GPIO_ReadPin(GPIOB, GPIO_PIN_8) == 1 ) && power !=0){
-       if ((prevB8 == 1) && (HAL_GPIO_ReadPin(GPIOB, GPIO_PIN_8) == 0)){
-    	   	   	 cntB8++;
-    	   	   	 emmode=0;
-            	 MODE = cntB8%3;
-
-
-
-            	 //some stuff
-            	 tickspr = HAL_GetTick();
-            	  }
-
- if ((prevB8 == 0) && (HAL_GPIO_ReadPin(GPIOB, GPIO_PIN_8) == 1)){
-            tickspr = HAL_GetTick();
-           }
-
-prevB8 = HAL_GPIO_ReadPin(GPIOB, GPIO_PIN_8);
-modeset();
-
-}
-
-//end B8
+           MODE = cntB8%3;
+           ii=0;
+           jj=0;
+           rchan =128;
+           gchan =128;
+           bchan =128;
+           stateok=1;
+            	  	  }
+//end B8 left
 
 
+//button A7 right
+     if (ritbut == 0){
+
+		butencode=1;
+        emmode++;
+        p1timeval=0;
+
+        if(emmode==3) {
+          emmode=0;
 
 
+    	 	    	   }
 
+        stateok=1;}
+//end A7 right
 
-   //button A7 right
-if((prevA7==1 || HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_7) == 1 )&& power !=0){
-if ((prevA7 == 1) && (HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_7) == 0)){
-
-    	 cntA7++;
-    	 emmode++;
-    	 	    		if(emmode==3){
-    	 	    			emmode=0;
-    	 	    		}
-    	 tickspr = HAL_GetTick();
-
-    	  }
-
-if ((prevA7 == 0) && (HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_7) == 1)){
-    tickspr = HAL_GetTick();
-   }
-
-prevA7 = HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_7);
-modeset();
-
-}
-
-//end A7
-
-
-}}
+ modeset();
 
 //end button code
-
-
-
-void resetall(){
-//reset vars
-
-
-	 tickspr = 0;
-
-	 cntA9=0;  //A9 is middle
-	 cntB8=0; //left B8
-	 cntA6=0;  //A6 is top
-	 cntA7=0;   //A7 right
-	 cntB9=0;  //B9 is bottom
-
-	 prevA9=1;
-	 prevB9=1;
-	 prevB8=1;
-	 prevA6=1;
-	 prevA7=1;
-
-
-	//adc slider
-	 val=0; // value of R (digital val 0 to around 4k)
-	 vin=0;
-	 vinadj=0;
-
-
-	//dac
-	 dacout=0;
-	 output_voltage = 0;
-
-
-	//mode
-	 MODE=0;
-	 emmode=0;
-
-
-	//pwm
-	 uint16_t pwmval= 0;
-	 pwmval=pwmval;
-
-
-
-
-//redo initializations
-
-
-
-
 }
+
+
 
 
 
@@ -419,19 +444,19 @@ void resetall(){
 
 void dacset(){
 
-
+	strobeon=1;
 	//start
 	  HAL_DAC_Start(&hdac1, DAC_CHANNEL_1);
-	  HAL_ADC_Start(&hadc1);
-	//adc
+	  HAL_ADC_Start_DMA(&hadc1, &val, 1);
 
-	//HAL_ADC_PollForConversion(&hadc1, HAL_MAX_DELAY);   //check if NEEDED
-	//adc read
-	 val = HAL_ADC_GetValue(&hadc1);
+
 	  vin = val * (3.3) / (pow(2,12)-1);
+
 	  //scale ADC
-	 vinadj = vin*(1.18 + -0.0436*vin + 1.72*(pow(vin,2))/1000);
-	 //truncate adc
+	  //vinadj = vin*(1.18 - 0.0436*vin + 1.72*(pow(vin,2))/1000);
+	  vinadj = vin*(1.17 - 0.0456*vin + 1.70*(pow(vin,2))/1000);
+
+
 	 if (vinadj>3.28){
 		 vinadj=3.30;
 	 }
@@ -446,21 +471,58 @@ void dacset(){
 	  if (flagstat!=1){
 	  output_voltage = (uint32_t)((4095.0/3.30)*dacout);
 	  }
+
+	  if (flagstat==1){
+		  	output_voltage =(uint32_t) (4095*(((double)(stateval))/512.0));
+	  }
 	  //truncate digital out
 	  if (output_voltage > 4095){
 		  output_voltage =4095;
 	  }
+	  if  (alternator ==0 && strobeflag ==1){
+	  		 //output_voltage =0;
+		  strobeon =0;
+	  	  }
 
-
+	  if (MODE!=2){
 	  //output dac
-	  HAL_DAC_SetValue(&hdac1, DAC_CHANNEL_1, DAC_ALIGN_12B_R, output_voltage);
+
+		  if (volconflag ==0 ){
+			  initialstate_intensity = output_voltage;
+		  }
+
+		out_new = initialstate_intensity + InitialdiffX; // last state plus last difference
+		if (out_new<0){
+			out_new =0;
+
+		}
+		if (out_new>=4095){
+					out_new =4095;
+
+				}
 
 
+	  HAL_DAC_SetValue(&hdac1, DAC_CHANNEL_1, DAC_ALIGN_12B_R, out_new*strobeon*ps);
 
+
+	 // HAL_ADC_Stop(&hadc1)
+	  }
+	  HAL_ADC_Stop_DMA(&hadc1);
 }
 
 //end dac
+void pwmset(){
+	strobeon=1;
+	if  (alternator ==0 && strobeflag ==1){
+			  strobeon =0;
+		  }
 
+	  pwmval=(uint32_t)(((double)out_new)*1000.0/4095.0);
+	  if (emmode !=2 && emmode !=1){
+	  __HAL_TIM_SET_COMPARE(&htim2, TIM_CHANNEL_4, pwmval*strobeon*ps);
+	  }
+
+}
 
 
 
@@ -505,7 +567,7 @@ void modeset(){
 
 
 void emergencyset(){
-	if (emmode==2){
+	if (emmode==2 || emmode==1){
 				HAL_GPIO_WritePin(GPIOB, GPIO_PIN_5, GPIO_PIN_SET);
 
 	}
@@ -517,56 +579,66 @@ void emergencyset(){
 
 }
 
-void pwmset(){
 
-	  pwmval=(uint32_t)(((double)output_voltage)*1000/4095);
-	  __HAL_TIM_SET_COMPARE(&htim2, TIM_CHANNEL_4, pwmval);
-
-}
 
 
 void uartdecode(){
 	//size 14
-
+	ps=1;
+	  probincr++;
 	//param flags
+	  firston =1;
 
 
 
-	if (rxSetBuf[0] == '#' && rxSetBuf[17]=='$' && (rxSetBuf[18]=='\n' || rxSetBuf[18]==0b00001010 ) && rxSetBuf[2]=='M'){
-		flagstat=1;
-	}
 	flagstat=1;
 
+	flagstatcopy=1;
 
+//set all values
+	//mode is not stored - held in rxsetbuf
 
-	memcpy(statepara, &rxSetBuf[13], 3);
+		memcpy(statepara, &rxSetBuf[5], 3); // state para is first
 	statepara[3] = '\0';
-	snprintf((char*)statepara_str, 5, "%s", (char*)statepara);
-	stateval = ((uint16_t)atoi((char*)statepara_str));
+	stateval = (uint16_t)(atoi(statepara));
 
 
-		memcpy(par1, &rxSetBuf[5], 3);
+
+		memcpy(par1, &rxSetBuf[9], 3);   //here is para1
 		par1[3] = '\0';
-		p1val = ((double)atoi((char*)par1));
+			p1val = ((double)atoi(par1));
+			p1timeval = p1val;
 
 
-
-		memcpy(par2, &rxSetBuf[9], 3);
+			memcpy(par2, &rxSetBuf[13], 3);   //here is para2
 			par2[3] = '\0';
-			p2val = ((double)atoi((char*)par2));
+			//snprintf((char*)statepara_str, 5, "%s", (char*)statepara);
+			strcpy(p2val, par2);
+			p2bchan = ((double)atoi(par2));
+
+			//p2val is a char array
+
+
+			//if in morse:
+			// default is sos on mode switch but then to whatever huart sends. 000 no change
+			//
 
 
 
 
 
+
+//NOTE statepar and par1 are switched when decoding. Con
 
 
 	//MODE 1
 
 	if(rxSetBuf[3] == 'F' ){
-	MODE =0;
+	MODE =0; //flash
+	emmode=0;
 
-	output_voltage =(uint32_t) (4095*(((double)atoi((char*)par1))/512.0));
+	output_voltage =(uint32_t) (4095*(((double)(stateval))/512.0));
+	out_new =(uint32_t) (4095*(((double)(stateval))/512.0));
 
 	dacset();
 	pwmset();
@@ -576,12 +648,62 @@ void uartdecode(){
 
 	//MODE 2
 	if(rxSetBuf[3] == 'E' ){
-	MODE =1;
+		output_voltage =(uint32_t) (4095*(((double)(stateval))/512.0));
+		out_new =(uint32_t) (4095*(((double)(stateval))/512.0));
+
+	MODE =1; //strobe
+
+	if (p1val==0){
+
+		//its in morse custom mode
+		emmode=2;
 
 
-		 output_voltage = p1val;
-		dacset();
-		pwmset();
+
+		if (p2val[0] == '0' && p2val[1] == '0' && p2val[2] == '0'){
+
+			message[3]= '\0';
+
+
+
+
+
+			//do nothing idk
+		}
+		else{
+
+
+			//declare my message array as para2
+			for(int i=0;i<3;i++){
+			message[i]= p2val[i];
+			message[3]= '\0';
+
+			}
+			if ( p2val[0]=='0' && p2val[1]=='0' && p2val[2]=='0'){
+				for(int i=0;i<3;i++){
+							message[i]= defmes[i];
+							message[3]= '\0';
+
+							}
+
+			}
+
+		}
+
+
+		}
+
+
+	else if (p1val !=0){
+		//probincr++;
+					//its in strobe mode
+					// output_voltage = stateval;
+							dacset();
+							pwmset();
+							//customized for when mode =1
+							emmode=0;
+
+				}
 
 
 
@@ -595,6 +717,12 @@ void uartdecode(){
 	if(rxSetBuf[3] == 'M' ){
 	MODE =2;
 
+	rchan =stateval;
+	gchan = p1val;
+	bchan = p2bchan;
+
+
+
 	//adjust R channel
 
 
@@ -603,32 +731,54 @@ void uartdecode(){
 
 
 
-
-
-
+firston=1;
+	sliderold = vinadj;
+	ps=1;
+modeset();
 }
 
 void uartencode(){
 
-	 // Initialize to all zeros
 
-	if (uartmode==1){
-		stateval = (uint32_t)((double)(output_voltage)*512.0/4095);
-		p1val=0;
-		p2val =0;
+//if flagstat 0??
+
+		stateval = (uint32_t)((double)(out_new)*512.0/4095.0 + 0.5);
+
+	if (emmode==0 && MODE ==1){ // if switched to manual input then  act accordingly flagstat==0 &&
+
+
+		strcpy(p2val, "SOS");
+
+	}
+
+	if (MODE==1 && (emmode==1 )  && p2val[0]=='0' && p2val[1]=='0' && p2val[2]=='0'){
+		 memcpy(p2val, defmes, 4);
+	}
+
+	if (MODE==1 && emmode==2 && p2val[0]=='0' && p2val[1]=='0' && p2val[2]=='0'){
+		 memcpy(p2val, message, 4);
+
+		}
+
+	if (MODE ==2 ){
+		stateval = rchan;
+		p1timeval = gchan;
+		sprintf(p2val, "%03d", bchan);
 
 
 
 	}
+	if (ps ==0 && MODE !=2){
+		stateval =0;
+	}
 
-	//uint8_t tBuf[21] = "inarrognized Command\n";
-	//HAL_UART_Transmit(&huart2, tBuf, 21, 5);
 	// Use sprintf() to format the integer as a string and store it in the totransmit array
 
-	sprintf((char*)(intptr_t)&statusarr[5], "%03d", p1val);
-	sprintf((char*)(intptr_t)&statusarr[9], "%03d", p2val);
+	sprintf((char*)(intptr_t)&statusarr[9], "%03d", p1timeval);
+	//sprintf((char*)(intptr_t)&statusarr[13], "%03d", p2val);
+	sprintf((char*)(intptr_t)&statusarr[13], "%s", p2val);
 	//	sprintf(&statusarr[9], "%03d", p2val);
-	sprintf((char*)(intptr_t)&statusarr[13], "%03d", stateval);
+	sprintf(&statusarr[5], "%03d", stateval);
 	statusarr[0] = '#';
 	sprintf((char*)(intptr_t)&statusarr[1], "%03d", ':');
 	statusarr[2] = 'M';
@@ -666,6 +816,379 @@ void uartencode(){
 }
 
 
+
+
+void strobeset(){
+
+// Start the PWM signal
+strobeflag =1;
+
+
+if (alternator ==0){
+
+dacset();
+pwmset();
+alternator =1;
+}
+else{
+
+dacset();
+pwmset();
+alternator =0;
+
+}
+
+
+strobetime = HAL_GetTick();
+
+strobeflag=0;
+
+
+
+}
+//declare
+
+void convertToMorse() {
+
+
+    for (int i = 0; i < 3; i++) {
+        // Convert current character to uppercase
+    	if (emmode==2){
+         c = (message[i]);
+    	}
+    	if (emmode==1){
+    		c = defmes[i];
+    	}
+
+        // Find Morse code for current character
+        //const char* morse = NULL;
+        if (c >= 'A' && c <= 'Z') {
+            morse = morseTable[c - 'A']; //morse is current morse char ie S
+        } else if (c >= '0' && c <= '9') {
+            morse = morseTable[c - '0' + 26];
+        }
+
+        // Convert Morse code to binary and store in appropriate output array
+
+        if (i == 0) {
+    		len1 = strlen(morse) ;
+        	output = output1 = (int*) malloc(strlen(morse) * sizeof(int)+1);
+
+
+
+
+        } else if (i == 1) {
+        	len2 = strlen(morse) ;
+            output = output2 = (int*) malloc(strlen(morse) * sizeof(int)+1);
+        } else {
+        	len3 = strlen(morse) ;
+            output = output3 = (int*) malloc(strlen(morse) * sizeof(int)+1);
+        }
+        //varno++;
+         k = 0;
+        while (*morse) {
+            output[k++] = (*morse++ == '.') ? 0 : 1;
+        }
+        output[k] = '\0';
+
+
+
+    }
+
+
+
+}
+
+void sendoutmorse(){
+
+
+	if ((HAL_GetTick()-morsesent)>=reqwait){
+
+		HAL_DAC_SetValue(&hdac1, DAC_CHANNEL_1, DAC_ALIGN_12B_R, 0);
+		__HAL_TIM_SET_COMPARE(&htim2, TIM_CHANNEL_4, 0);
+
+		if ((HAL_GetTick()-morsesent)>=(reqwait+timuni + reqwait2)){
+
+			voltlev = out_new;
+
+			//fix here
+			pwmvoltlev = ((double)voltlev)*1000/4095;
+			reqwait2 =0;
+
+
+	if (ii ==0){
+		//output1[i]!='\0'
+		if (output1[jj]==1){
+
+
+			HAL_DAC_SetValue(&hdac1, DAC_CHANNEL_1, DAC_ALIGN_12B_R, voltlev*ps);
+			__HAL_TIM_SET_COMPARE(&htim2, TIM_CHANNEL_4, pwmvoltlev*ps);
+			 //databuf[i] = '1';
+			reqwait = 3*timuni;
+			//srtflag =1; //wait extra 512ms at 0V
+
+		}
+
+
+		else{
+
+			//databuf[i] = '0';
+
+			HAL_DAC_SetValue(&hdac1, DAC_CHANNEL_1, DAC_ALIGN_12B_R, voltlev*ps);
+			__HAL_TIM_SET_COMPARE(&htim2, TIM_CHANNEL_4, pwmvoltlev*ps);
+			reqwait = timuni;
+		}
+		jj++;
+		if (jj==len1){
+			reqwait2  = 2*timuni;
+
+			ii++;
+			jj=0;
+		}
+
+	}
+
+	else if (ii ==1){
+		//output1[i]!='\0'
+		if (output2[jj]==1 ){
+
+
+			HAL_DAC_SetValue(&hdac1, DAC_CHANNEL_1, DAC_ALIGN_12B_R, voltlev*ps);
+			__HAL_TIM_SET_COMPARE(&htim2, TIM_CHANNEL_4, pwmvoltlev*ps);
+
+			reqwait = 3*timuni;
+
+		}
+
+
+		else{
+
+			HAL_DAC_SetValue(&hdac1, DAC_CHANNEL_1, DAC_ALIGN_12B_R, voltlev*ps);
+			__HAL_TIM_SET_COMPARE(&htim2, TIM_CHANNEL_4, pwmvoltlev*ps);
+			reqwait = timuni;
+		}
+		test1=jj;
+		jj++;
+		if (jj==len2){
+			test2=jj;
+			ii++;
+			jj=0;
+			reqwait2  = 2*timuni;
+		}
+
+	}
+
+	else if (ii ==2){
+		//output1[i]!='\0'
+		if (output3[jj]==1){
+			reqwait = 3*timuni;
+
+			HAL_DAC_SetValue(&hdac1, DAC_CHANNEL_1, DAC_ALIGN_12B_R, voltlev*ps);
+			__HAL_TIM_SET_COMPARE(&htim2, TIM_CHANNEL_4, pwmvoltlev*ps);
+
+		}
+
+
+		else{
+			//databuf[i] = '0';
+
+			HAL_DAC_SetValue(&hdac1, DAC_CHANNEL_1, DAC_ALIGN_12B_R, voltlev*ps);
+			__HAL_TIM_SET_COMPARE(&htim2, TIM_CHANNEL_4, pwmvoltlev*ps);
+			reqwait = timuni;
+		}
+		jj++;
+		if (jj==len3){
+			ii=0;
+			jj=0;
+			reqwait2  = 6*timuni;
+		}
+
+
+			//HAL_UART_Transmit(&huart2, databuf, len1+1, 5);
+
+	}
+		morsesent = HAL_GetTick();
+
+}}}
+
+void buttonselect(){
+
+	midbut = HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_9);
+        		botbut = HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_1);
+        		letbut = HAL_GPIO_ReadPin(GPIOB, GPIO_PIN_8);
+        		ritbut = HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_7);
+        		topbut =  HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_6);
+
+  if ( letbut ==0 || botbut==0 ||  ritbut==0 || topbut==0 || midbut==0){
+	  stateincr++;
+
+  }
+  else {
+	  stateincr=0;
+	  state=0;
+  }
+
+
+  	  if (stateincr>=170){
+  		  stinlast= stateincr;
+		  buttonpressed();
+  	  stateincr=0;
+  	state=0;
+  	 tickspr = HAL_GetTick();
+  	  }
+
+}
+//end func
+
+void poweroff(){
+				HAL_DAC_SetValue(&hdac1, DAC_CHANNEL_1, DAC_ALIGN_12B_R, 0);
+				  __HAL_TIM_SET_COMPARE(&htim2, TIM_CHANNEL_4, 0);
+
+	  }
+
+//endpower
+
+void MODESWITCH(){
+
+		  if (MODE ==0){
+				  dacset();
+				  pwmset();  // SET PWM AND DAC BASED ON SLIDER VOLTAGE
+
+					  }
+			if (MODE ==1 ){
+
+							if (emmode==0){
+								//strobe flagstat==1 ||
+								if(p1timeval !=0){
+								if (HAL_GetTick()-strobetime>=p1timeval){
+									  strobeset();
+											  }}
+								else if (flagstat==0 || p1timeval==0){
+									p1timeval=512;
+
+									if (HAL_GetTick()-strobetime>=512){
+									strobeset();
+																						  }
+
+								}
+							}
+
+							else if (emmode ==1 || emmode ==2){
+
+								//morse
+
+								dacset();
+								  pwmset();
+						  convertToMorse();
+								sendoutmorse();
+
+
+
+
+							free(output1);
+							free(output2);
+							free(output3);
+			}}
+
+			if (MODE==2){
+//				if (modechangedflag){
+//					rchan =128;
+//					gchan =128;
+//					bchan =128;
+//					modechangedflag=0;
+//				}
+
+				HAL_DAC_SetValue(&hdac1, DAC_CHANNEL_1, DAC_ALIGN_12B_R, 0);
+				__HAL_TIM_SET_COMPARE(&htim2, TIM_CHANNEL_4, 0);
+
+
+			}
+
+}
+//end modeswitch
+
+void uartselect(){
+probincr += uartmode;
+		if (uartmode==1){
+			  	  	  //mode 1 is a set command
+
+			  uartdecode();
+
+				//uartencode();
+
+
+			 uartmode=0;
+		  }
+
+		  if (uartmode==2){
+
+			  //mode 2 is a request command
+
+
+			  uartencode();
+			  uartmode=0;  //mode 0 is no decode or encode
+	  }
+
+}
+
+void hitthelights(){
+
+	// x 0-  1792  y 0- 768
+	int streng = (int)((float)yCoord/740.0*572);
+	if (streng >512){
+		streng =512;
+	}
+
+	if(xCoord <(1783.0/3) && xCoord >0){
+		rchan = streng;  // r mapped pc8 3,3
+		char* msg = "red channel: ";
+		int len = strlen(msg);
+		//HAL_UART_Transmit(&huart2, (uint8_t*)msg, len, 100);
+		char statey[5];
+								sprintf(&statey, "%03d\n", rchan);
+								//HAL_UART_Transmit(&huart2, (uint8_t*)statey, 3, 100);
+		//HAL_UART_Transmit(&huart2, (uint8_t*)"\n", 1, 100);
+
+	}
+	if(xCoord >(1783.0/3) && xCoord <(1783.0*2/3)){
+			gchan = streng; // g mapped pa12 4,2
+			char* msg = "green channel: ";
+			int len = strlen(msg);
+			//HAL_UART_Transmit(&huart2, (uint8_t*)msg, len, 100);
+
+			char statey[5];
+			sprintf(&statey, "%03d\n", gchan);
+			//HAL_UART_Transmit(&huart2, (uint8_t*)statey, 3, 100);
+
+			//HAL_UART_Transmit(&huart2, (uint8_t*)"\n", 1, 100);
+
+		}
+	if(xCoord >(1783.0*2/3) && xCoord <(1783.0)){
+			bchan =(int) streng;   // blue mapped pc6 tim3 chan 1
+
+			char* msg = "blue channel: ";
+			int len = strlen(msg);
+			//HAL_UART_Transmit(&huart2, (uint8_t*)msg, len, 100);
+			//transmit message
+			char statey[5];
+						sprintf(&statey, "%03d\n", bchan);
+						//HAL_UART_Transmit(&huart2, (uint8_t*)statey, 3, 100);
+		//trans channel
+		//trans newline
+
+			//HAL_UART_Transmit(&huart2, (uint8_t*)"\n", 1, 100);
+
+		}
+
+
+
+}
+
+
+
+
+
+
 /* USER CODE END 0 */
 
 /**
@@ -681,7 +1204,8 @@ int main(void)
   /* MCU Configuration--------------------------------------------------------*/
 
   /* Reset of all peripherals, Initializes the Flash interface and the Systick. */
-  HAL_Init();
+
+	HAL_Init();
 
   /* USER CODE BEGIN Init */
 
@@ -701,18 +1225,58 @@ int main(void)
   MX_ADC1_Init();
   MX_DAC1_Init();
   MX_TIM2_Init();
+  MX_I2C1_Init();
+  MX_TIM3_Init();
+  MX_TIM4_Init();
   /* USER CODE BEGIN 2 */
 //  HAL_UART_Receive_IT(&huart2, rxdata, sizeof(rxdata));
-// HAL_Delay(250);
-//  HAL_UART_Transmit_IT(&huart2, txData, 13);
-  modeset();
-  HAL_TIM_PWM_Start(&htim2, TIM_CHANNEL_4);
-
- //HAL_ADC_PollForConversion(&hadc1, HAL_MAX_DELAY);
-  __HAL_TIM_SET_COMPARE(&htim2, TIM_CHANNEL_4, 500);
-
-  HAL_UARTEx_ReceiveToIdle_DMA(&huart2, rxdata, 50);
+HAL_Delay(150);
+HAL_UARTEx_ReceiveToIdle_DMA(&huart2, rxdata, 50);
   __HAL_DMA_DISABLE_IT(&hdma_usart2_rx, DMA_IT_HT);
+HAL_UART_Transmit(&huart2, (uint8_t*)txData, 13, 500);
+
+//HAL_Delay(50);
+//
+//char buffer[] = "helloworld";
+//strcpy(buffer, "helloworld");
+//
+//HAL_UART_Transmit(&huart2, (uint8_t*)buffer, 11, 500);
+
+  modeset();
+ // HAL_Delay(10);
+  HAL_TIM_PWM_Start(&htim2, TIM_CHANNEL_4); // 42 33 31
+  HAL_TIM_PWM_Start(&htim4, TIM_CHANNEL_2);
+  HAL_TIM_PWM_Start(&htim3, TIM_CHANNEL_3);
+  HAL_TIM_PWM_Start(&htim3, TIM_CHANNEL_1);
+
+  HAL_ADC_Start(&hadc1);
+  HAL_ADC_Start_DMA(&hadc1, &val, 1);
+  //HAL_Delay(10);
+
+
+  HAL_GPIO_WritePin(GPIOB, GPIO_PIN_14, GPIO_PIN_RESET);
+  	HAL_Delay(10);
+  	HAL_GPIO_WritePin(GPIOB, GPIO_PIN_14, GPIO_PIN_SET);
+  //	HAL_Delay(10);
+  	make_reset_certain();
+  	set_trackpad_settings();
+  //	HAL_Delay(10);
+  	TP_ReATI();
+
+  	//HAL_Delay(10);
+
+firston =1;
+
+//while (azoFlag==0){
+//
+//	continue;
+//}
+//azoFlag=0;
+//acknowledgeReset();
+//writeMM();
+//TP_ReATI();
+//uint16_t prodNum = getProductNum();
+
 
 
   /* USER CODE END 2 */
@@ -722,67 +1286,139 @@ int main(void)
   while (1)
   {
 
-	  //continuous adc read outputted through dac - conditioned
+	  if (MODE ==2){
 
-	  if (power==1){
-	  dacset();
-	  //uartencode();
+			 __HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_3, (int)(((float)rchan)*ps*1000.0/512.0));
+			 __HAL_TIM_SET_COMPARE(&htim4, TIM_CHANNEL_2, (int)(((float)bchan)*ps*1000.0/512.0));
+		  __HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_1, (int)(((float)gchan)*ps*1000.0/512.0));
+	  }
+	  else {
+		  rchan=128;
+		  bchan=128;
+		  gchan=128;
+			 __HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_3, (int)(((float)rchan)*0/512.0));
+			 __HAL_TIM_SET_COMPARE(&htim4, TIM_CHANNEL_2, (int)(((float)gchan)*0/512.0));
+		  __HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_1, (int)(((float)bchan)*0/512.0));
+	  }
+	  vinadjsum[io] = vinadj;
+	  vinadjav = 	( vinadjsum[0]+vinadjsum[2]+vinadjsum[1])/(io+1);
+	  io++;
+	  if (io==3){
+		  io=0;
+		  vinadjsum[0]=0;
+		  vinadjsum[1]=0;
+		  vinadjsum[2]=0;
+	  }
 
-	  pwmset();
 
-		  if (uartmode==1){
-			  uartdecode();
-			  uartencode();
-			  uartmode=0;
+//	  if (prevMODE !=MODE){
+//		  modechangedflag =1;
+//	  }
+
+
+	  //ensures slider old not set to 0 before vinadj initialized
+
+
+	  //uart protocol set or request function
+
+	  uartselect();
+
+	  //find out which mode and call its operations
+		  MODESWITCH();
+
+
+	if (flagstat==0){
+		sliderold=vinadj;
+	}
+	  if (ps==0){
+
+		 poweroff();
+
+	  }
+
+	  //button press and operations
+
+
+
+	// send out button press state
+	  if (state==1 && HAL_GetTick()-tickspr>=28){  //button pressed
+	buttonselect();
+
+
+		 	  }
+	  if (butencode==1){
+
+		  probincr++;
+		  uartencode();
+		  butencode=0;
+	  }
+
+
+	  updateTrackpad();
+
+	  if (TapFlag==1){
+		  sliderold = vinadj;
+		  stateok=0;
+		  firston=1;
+		 // cantruntime =HAL_GetTick();
+		  if (MODE ==2 ){
+			  //modes go from 0-2
+			  hitthelights();
+
+		  }
+		  if (MODE ==1){
+			  emmode++;
+			        p1timeval=0;
+
+			        if(emmode==3) {
+			          emmode=0;
+
+			    	 	    	   }
+			       modeset();
+		  }
+		  flagstatcopy = 1;
+
+
+		  TapFlag=0;
+	  }
+
+		  if (flagstat==1 && firston !=1 && (  abs((int32_t)(1000.0*
+				  (sliderold - vinadjav)))>150  || ((stateok ==1) && state==1)))
+				  {
+
+			  flagstat=0;  //revert to analog in
+
+
+
+		  }
+		   rrr = (abs((int32_t)((int32_t)slideroldtrack - (int32_t)output_voltage) ));
+
+		  if (  rrr>300  || flagstatcopy==1){
+
+			  //sumdiff=0;
+			 // resinitflag =1;
+			  out_new = output_voltage;
+			  initialstate_intensity = output_voltage;
+			  InitialdiffX = 0;
+			  volconflag=0;
+			  flagstatcopy=0;
 		  }
 
-		  if (uartmode==2){
+		  if (pressAndHoldFlag==1){
+			  if (ps==1){
+				  probincr++;
+				  ps=0;
 
-			  uartencode();
-			  uartmode=0;
-	  }
+			  }
+			  else{ps=1;}
+			  pressAndHoldFlag=0;
+		 	  }
 
-		  if (flagstat==1 && (  abs((uint32_t)(1000.0*(sliderold - vinadj)))>15  || state ==1)){
+//		  if (firston==1){
+//			  azoFlag =1;
+//		  }
 
-			  flagstat=0;
-
-
-		  }
-
-
-	  //receive data
-
-
-
-
-	  //testing if button was turned on
-
-
-
-
-
-	  }
-
-	  else{
-
-			HAL_GPIO_WritePin(GPIOA, GPIO_PIN_10, GPIO_PIN_RESET);
-				HAL_GPIO_WritePin(GPIOB, GPIO_PIN_10, GPIO_PIN_RESET);
-				HAL_GPIO_WritePin(GPIOB, GPIO_PIN_4, GPIO_PIN_RESET);
-				HAL_GPIO_WritePin(GPIOB, GPIO_PIN_5, GPIO_PIN_RESET);
-				HAL_DAC_SetValue(&hdac1, DAC_CHANNEL_1, DAC_ALIGN_12B_R, 0);
-				  __HAL_TIM_SET_COMPARE(&htim2, TIM_CHANNEL_4, 0);
-
-	  }
-
-	  if (state==1){
-	 		  buttonpressed();
-	 		  uartencode();
-	 		  state=0;
-	 	  }
-
-
-
-
+		  firston=0;
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
@@ -828,11 +1464,14 @@ void SystemClock_Config(void)
   {
     Error_Handler();
   }
-  PeriphClkInit.PeriphClockSelection = RCC_PERIPHCLK_USART2|RCC_PERIPHCLK_ADC12
-                              |RCC_PERIPHCLK_TIM2;
+  PeriphClkInit.PeriphClockSelection = RCC_PERIPHCLK_USART2|RCC_PERIPHCLK_I2C1
+                              |RCC_PERIPHCLK_ADC12|RCC_PERIPHCLK_TIM2
+                              |RCC_PERIPHCLK_TIM34;
   PeriphClkInit.Usart2ClockSelection = RCC_USART2CLKSOURCE_PCLK1;
   PeriphClkInit.Adc12ClockSelection = RCC_ADC12PLLCLK_DIV1;
+  PeriphClkInit.I2c1ClockSelection = RCC_I2C1CLKSOURCE_HSI;
   PeriphClkInit.Tim2ClockSelection = RCC_TIM2CLK_HCLK;
+  PeriphClkInit.Tim34ClockSelection = RCC_TIM34CLK_HCLK;
   if (HAL_RCCEx_PeriphCLKConfig(&PeriphClkInit) != HAL_OK)
   {
     Error_Handler();
@@ -946,6 +1585,54 @@ static void MX_DAC1_Init(void)
 }
 
 /**
+  * @brief I2C1 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_I2C1_Init(void)
+{
+
+  /* USER CODE BEGIN I2C1_Init 0 */
+
+  /* USER CODE END I2C1_Init 0 */
+
+  /* USER CODE BEGIN I2C1_Init 1 */
+
+  /* USER CODE END I2C1_Init 1 */
+  hi2c1.Instance = I2C1;
+  hi2c1.Init.Timing = 0x0000020B;
+  hi2c1.Init.OwnAddress1 = 0;
+  hi2c1.Init.AddressingMode = I2C_ADDRESSINGMODE_7BIT;
+  hi2c1.Init.DualAddressMode = I2C_DUALADDRESS_DISABLE;
+  hi2c1.Init.OwnAddress2 = 0;
+  hi2c1.Init.OwnAddress2Masks = I2C_OA2_NOMASK;
+  hi2c1.Init.GeneralCallMode = I2C_GENERALCALL_DISABLE;
+  hi2c1.Init.NoStretchMode = I2C_NOSTRETCH_DISABLE;
+  if (HAL_I2C_Init(&hi2c1) != HAL_OK)
+  {
+    Error_Handler();
+  }
+
+  /** Configure Analogue filter
+  */
+  if (HAL_I2CEx_ConfigAnalogFilter(&hi2c1, I2C_ANALOGFILTER_ENABLE) != HAL_OK)
+  {
+    Error_Handler();
+  }
+
+  /** Configure Digital filter
+  */
+  if (HAL_I2CEx_ConfigDigitalFilter(&hi2c1, 0) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN I2C1_Init 2 */
+
+  /* USER CODE END I2C1_Init 2 */
+
+}
+
+/**
   * @brief TIM2 Initialization Function
   * @param None
   * @retval None
@@ -1005,6 +1692,128 @@ static void MX_TIM2_Init(void)
 }
 
 /**
+  * @brief TIM3 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_TIM3_Init(void)
+{
+
+  /* USER CODE BEGIN TIM3_Init 0 */
+
+  /* USER CODE END TIM3_Init 0 */
+
+  TIM_ClockConfigTypeDef sClockSourceConfig = {0};
+  TIM_MasterConfigTypeDef sMasterConfig = {0};
+  TIM_OC_InitTypeDef sConfigOC = {0};
+
+  /* USER CODE BEGIN TIM3_Init 1 */
+
+  /* USER CODE END TIM3_Init 1 */
+  htim3.Instance = TIM3;
+  htim3.Init.Prescaler = 720;
+  htim3.Init.CounterMode = TIM_COUNTERMODE_UP;
+  htim3.Init.Period = 999;
+  htim3.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
+  htim3.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
+  if (HAL_TIM_Base_Init(&htim3) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sClockSourceConfig.ClockSource = TIM_CLOCKSOURCE_INTERNAL;
+  if (HAL_TIM_ConfigClockSource(&htim3, &sClockSourceConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  if (HAL_TIM_PWM_Init(&htim3) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sMasterConfig.MasterOutputTrigger = TIM_TRGO_RESET;
+  sMasterConfig.MasterSlaveMode = TIM_MASTERSLAVEMODE_DISABLE;
+  if (HAL_TIMEx_MasterConfigSynchronization(&htim3, &sMasterConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sConfigOC.OCMode = TIM_OCMODE_PWM1;
+  sConfigOC.Pulse = 0;
+  sConfigOC.OCPolarity = TIM_OCPOLARITY_HIGH;
+  sConfigOC.OCFastMode = TIM_OCFAST_DISABLE;
+  if (HAL_TIM_PWM_ConfigChannel(&htim3, &sConfigOC, TIM_CHANNEL_1) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  if (HAL_TIM_PWM_ConfigChannel(&htim3, &sConfigOC, TIM_CHANNEL_3) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN TIM3_Init 2 */
+
+  /* USER CODE END TIM3_Init 2 */
+  HAL_TIM_MspPostInit(&htim3);
+
+}
+
+/**
+  * @brief TIM4 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_TIM4_Init(void)
+{
+
+  /* USER CODE BEGIN TIM4_Init 0 */
+
+  /* USER CODE END TIM4_Init 0 */
+
+  TIM_ClockConfigTypeDef sClockSourceConfig = {0};
+  TIM_MasterConfigTypeDef sMasterConfig = {0};
+  TIM_OC_InitTypeDef sConfigOC = {0};
+
+  /* USER CODE BEGIN TIM4_Init 1 */
+
+  /* USER CODE END TIM4_Init 1 */
+  htim4.Instance = TIM4;
+  htim4.Init.Prescaler = 720;
+  htim4.Init.CounterMode = TIM_COUNTERMODE_UP;
+  htim4.Init.Period = 999;
+  htim4.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
+  htim4.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
+  if (HAL_TIM_Base_Init(&htim4) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sClockSourceConfig.ClockSource = TIM_CLOCKSOURCE_INTERNAL;
+  if (HAL_TIM_ConfigClockSource(&htim4, &sClockSourceConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  if (HAL_TIM_PWM_Init(&htim4) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sMasterConfig.MasterOutputTrigger = TIM_TRGO_RESET;
+  sMasterConfig.MasterSlaveMode = TIM_MASTERSLAVEMODE_DISABLE;
+  if (HAL_TIMEx_MasterConfigSynchronization(&htim4, &sMasterConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sConfigOC.OCMode = TIM_OCMODE_PWM1;
+  sConfigOC.Pulse = 0;
+  sConfigOC.OCPolarity = TIM_OCPOLARITY_HIGH;
+  sConfigOC.OCFastMode = TIM_OCFAST_DISABLE;
+  if (HAL_TIM_PWM_ConfigChannel(&htim4, &sConfigOC, TIM_CHANNEL_2) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN TIM4_Init 2 */
+
+  /* USER CODE END TIM4_Init 2 */
+  HAL_TIM_MspPostInit(&htim4);
+
+}
+
+/**
   * @brief USART2 Initialization Function
   * @param None
   * @retval None
@@ -1049,9 +1858,15 @@ static void MX_DMA_Init(void)
   __HAL_RCC_DMA1_CLK_ENABLE();
 
   /* DMA interrupt init */
+  /* DMA1_Channel1_IRQn interrupt configuration */
+  HAL_NVIC_SetPriority(DMA1_Channel1_IRQn, 0, 0);
+  HAL_NVIC_EnableIRQ(DMA1_Channel1_IRQn);
   /* DMA1_Channel6_IRQn interrupt configuration */
   HAL_NVIC_SetPriority(DMA1_Channel6_IRQn, 0, 0);
   HAL_NVIC_EnableIRQ(DMA1_Channel6_IRQn);
+  /* DMA1_Channel7_IRQn interrupt configuration */
+  HAL_NVIC_SetPriority(DMA1_Channel7_IRQn, 0, 0);
+  HAL_NVIC_EnableIRQ(DMA1_Channel7_IRQn);
 
 }
 
@@ -1076,11 +1891,20 @@ static void MX_GPIO_Init(void)
   /*Configure GPIO pin Output Level */
   HAL_GPIO_WritePin(GPIOB, GPIO_PIN_10|GPIO_PIN_4|GPIO_PIN_5, GPIO_PIN_RESET);
 
+  /*Configure GPIO pin Output Level */
+  HAL_GPIO_WritePin(GPIOB, GPIO_PIN_14, GPIO_PIN_SET);
+
   /*Configure GPIO pin : B1_Pin */
   GPIO_InitStruct.Pin = B1_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_IT_FALLING;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   HAL_GPIO_Init(B1_GPIO_Port, &GPIO_InitStruct);
+
+  /*Configure GPIO pins : PA1 PA7 PA9 */
+  GPIO_InitStruct.Pin = GPIO_PIN_1|GPIO_PIN_7|GPIO_PIN_9;
+  GPIO_InitStruct.Mode = GPIO_MODE_IT_RISING_FALLING;
+  GPIO_InitStruct.Pull = GPIO_PULLUP;
+  HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
 
   /*Configure GPIO pins : LD2_Pin PA10 */
   GPIO_InitStruct.Pin = LD2_Pin|GPIO_PIN_10;
@@ -1089,17 +1913,17 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
 
-  /*Configure GPIO pins : PA6 PA7 PA9 */
-  GPIO_InitStruct.Pin = GPIO_PIN_6|GPIO_PIN_7|GPIO_PIN_9;
-  GPIO_InitStruct.Mode = GPIO_MODE_IT_RISING_FALLING;
-  GPIO_InitStruct.Pull = GPIO_PULLUP;
-  HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
-
-  /*Configure GPIO pins : PB10 PB4 PB5 */
-  GPIO_InitStruct.Pin = GPIO_PIN_10|GPIO_PIN_4|GPIO_PIN_5;
+  /*Configure GPIO pins : PB10 PB14 PB4 PB5 */
+  GPIO_InitStruct.Pin = GPIO_PIN_10|GPIO_PIN_14|GPIO_PIN_4|GPIO_PIN_5;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+  HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
+
+  /*Configure GPIO pin : PB12 */
+  GPIO_InitStruct.Pin = GPIO_PIN_12;
+  GPIO_InitStruct.Mode = GPIO_MODE_IT_FALLING;
+  GPIO_InitStruct.Pull = GPIO_PULLUP;
   HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
 
   /*Configure GPIO pin : PB8 */
@@ -1109,6 +1933,9 @@ static void MX_GPIO_Init(void)
   HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
 
   /* EXTI interrupt init*/
+  HAL_NVIC_SetPriority(EXTI1_IRQn, 0, 0);
+  HAL_NVIC_EnableIRQ(EXTI1_IRQn);
+
   HAL_NVIC_SetPriority(EXTI9_5_IRQn, 0, 0);
   HAL_NVIC_EnableIRQ(EXTI9_5_IRQn);
 
